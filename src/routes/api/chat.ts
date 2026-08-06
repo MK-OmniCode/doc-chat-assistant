@@ -104,7 +104,7 @@ export const Route = createFileRoute("/api/chat")({
           const result = streamText({
             model: lovable.responses("openai/gpt-5.6-sol"),
             system: buildSystemPrompt(context, body.documentName || "knowledge base"),
-            messages: convertToModelMessages(messages),
+            messages: await convertToModelMessages(messages),
             providerOptions: {
               // The gateway is stateless, so conversation history is resent
               // on every turn and nothing is stored server-side.
