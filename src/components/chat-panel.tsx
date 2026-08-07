@@ -179,7 +179,9 @@ export function ChatPanel({ document, initialMessages, onMessagesChange, onReset
               autoFocus
               disabled={!document}
               placeholder={
-                document ? "Ask a question about your documentation…" : "Load a knowledge base first"
+                document
+                  ? "Ask a question about your documentation…"
+                  : "Load a knowledge base first"
               }
             />
             <PromptInputFooter className="justify-end">

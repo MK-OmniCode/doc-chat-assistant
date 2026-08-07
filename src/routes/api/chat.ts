@@ -14,12 +14,6 @@ import { createFileRoute } from "@tanstack/react-router";
 import { createOpenAI } from "@ai-sdk/openai";
 import { convertToModelMessages, streamText, type UIMessage } from "ai";
 
-import {
-  createLovableAiGatewayRunIdFetch,
-  getLovableAiGatewayResponseHeaders,
-  getLovableAiGatewayRunId,
-  withLovableAiGatewayRunIdHeader,
-} from "@/lib/ai-gateway.server";
 import { formatContext, retrieveRelevantChunks } from "@/lib/retrieval";
 
 type ChatRequestBody = {
@@ -72,15 +66,14 @@ export const Route = createFileRoute("/api/chat")({
 
         const document = (body.document ?? "").trim();
         if (!document) {
-          return new Response(
-            "No knowledge base loaded. Upload a PDF or paste FAQ text first.",
-            { status: 400 },
-          );
+          return new Response("No knowledge base loaded. Upload a PDF or paste FAQ text first.", {
+            status: 400,
+          });
         }
 
-        const apiKey = process.env["LOVABLE_API_KEY"];
+        const apiKey = process.env["GEMINI_API_KEY"];
         if (!apiKey) {
-          return new Response("Missing LOVABLE_API_KEY", { status: 500 });
+          return new Response("Missing GEMINI_API_KEY", { status: 500 });
         }
 
         // --- Retrieval step -------------------------------------------------
@@ -88,40 +81,24 @@ export const Route = createFileRoute("/api/chat")({
         const context = formatContext(retrieveRelevantChunks(document, question));
 
         // --- Model call -----------------------------------------------------
-        const initialRunId = getLovableAiGatewayRunId(request);
-        const runIdFetch = createLovableAiGatewayRunIdFetch(initialRunId);
-        const lovable = createOpenAI({
-          baseURL: "https://ai.gateway.lovable.dev/v1",
+        const model = process.env["GEMINI_MODEL"] || "gemini-3-flash-preview";
+        const gemini = createOpenAI({
+          baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
           apiKey,
-          headers: {
-            "Lovable-API-Key": apiKey,
-            "X-Lovable-AIG-SDK": "vercel-ai-sdk",
-          },
-          fetch: runIdFetch.fetch,
         });
 
         try {
           const result = streamText({
-            model: lovable.responses("openai/gpt-5.6-sol"),
+            model: gemini.chat(model),
             system: buildSystemPrompt(context, body.documentName || "knowledge base"),
             messages: await convertToModelMessages(messages),
-            providerOptions: {
-              // The gateway is stateless, so conversation history is resent
-              // on every turn and nothing is stored server-side.
-              openai: { store: false },
-            },
           });
 
-          const response = result.toUIMessageStreamResponse({
+          return result.toUIMessageStreamResponse({
             originalMessages: messages,
-            headers: getLovableAiGatewayResponseHeaders(undefined, {
-              ...(initialRunId ? { "X-Lovable-AIG-Run-ID": initialRunId } : {}),
-            }),
           });
-
-          return withLovableAiGatewayRunIdHeader(response, runIdFetch);
         } catch (error) {
-          console.error("[api/chat] gateway error", error);
+          console.error("[api/chat] Gemini error", error);
           const message = error instanceof Error ? error.message : "Unknown error";
           // 429 = rate limited, 402 = out of credits: worth surfacing verbatim.
           const status = /429|rate limit/i.test(message)
